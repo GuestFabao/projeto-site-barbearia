@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 // --- Sua Configuração do Firebase ---
 const firebaseConfig = {
@@ -18,6 +18,44 @@ const CalendarIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h
 const SpinnerIcon = () => (<svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle> <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg>);
 const FeedbackMessage = ({ message, type }) => { if (!message) return null; const baseClasses = "text-center p-3 rounded-lg my-4"; const typeClasses = type === 'success' ? "bg-green-800 text-green-200 border border-green-600" : "bg-red-800 text-red-200 border border-red-600"; return <div className={`${baseClasses} ${typeClasses}`}>{message}</div>; };
 const KebabIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /> </svg>);
+
+// --- Componente do Painel de Login ---
+function LoginPanel({ auth, showFeedback }) {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error) {
+            showFeedback('Email ou senha inválidos.', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-8 space-y-6">
+            <h1 className="text-3xl font-bold text-white text-center">Acesso Administrativo</h1>
+            <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Senha</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required />
+                </div>
+                <button type="submit" disabled={loading} className="w-full flex justify-center py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                    {loading ? <SpinnerIcon /> : 'Entrar'}
+                </button>
+            </form>
+        </div>
+    );
+}
 
 // --- Componente do Painel de Configurações ---
 function ConfigPanel({ db }) {
@@ -84,7 +122,6 @@ function ConfigPanel({ db }) {
             <h1 className="text-3xl font-bold text-white text-center">Painel de Configurações</h1>
             <FeedbackMessage message={feedback.message} type={feedback.type} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Seção de Gerenciamento de Serviços */}
                 <div>
                     <h2 className="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Gerenciar Serviços</h2>
                     <form onSubmit={handleAdicionarServico} className="bg-gray-700 p-4 rounded-lg flex flex-col gap-4 mb-6">
@@ -94,7 +131,6 @@ function ConfigPanel({ db }) {
                     </form>
                     <div className="space-y-3 h-48 overflow-y-auto no-scrollbar">{loading ? <p>Carregando...</p> : servicos.map(s => (<div key={s.id} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center"><div><p className="font-semibold text-white">{s.nome}</p><p className="text-sm text-gray-300">R$ {s.preco.toFixed(2)}</p></div><button onClick={() => handleExcluirServico(s.id)} className="text-red-400 hover:text-red-300">Excluir</button></div>))}</div>
                 </div>
-                {/* Seção de Gerenciamento de Barbeiros */}
                 <div>
                     <h2 className="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Gerenciar Barbeiros</h2>
                     <form onSubmit={handleAdicionarBarbeiro} className="bg-gray-700 p-4 rounded-lg flex flex-col gap-4 mb-6">
@@ -208,16 +244,11 @@ function AdminPanel({ db }) {
                                                 onClick={() => {
                                                     const novoId = openMenuId === ag.id ? null : ag.id;
                                                     setOpenMenuId(novoId);
-
-                                                    // só faz o scroll se estiver abrindo
                                                     if (novoId) {
                                                         setTimeout(() => {
                                                             const menu = document.getElementById(`menu-${ag.id}`);
                                                             if (menu) {
-                                                                menu.scrollIntoView({
-                                                                    behavior: "smooth",
-                                                                    block: "nearest",
-                                                                });
+                                                                menu.scrollIntoView({ behavior: "smooth", block: "nearest" });
                                                             }
                                                         }, 50);
                                                     }
@@ -226,14 +257,8 @@ function AdminPanel({ db }) {
                                             >
                                                 <KebabIcon />
                                             </button>
-
                                             {openMenuId === ag.id && (
-                                                <div
-                                                    id={`menu-${ag.id}`}
-                                                    ref={menuRef}
-                                                    className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-700 ring-1 ring-black ring-opacity-5 z-10"
-                                                >
-
+                                                <div id={`menu-${ag.id}`} ref={menuRef} className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-700 ring-1 ring-black ring-opacity-5 z-10">
                                                     <a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Concluído'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-green-400 hover:bg-gray-600">Concluir</a>
                                                     <a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Cancelado'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600">Cancelar</a>
                                                     <a href="#" onClick={(e) => { e.preventDefault(); handleDelete(ag.id); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">Excluir</a>
@@ -251,7 +276,7 @@ function AdminPanel({ db }) {
     );
 }
 
-// --- Componente do Formulário de Agendamento ---
+// --- Componente da Página do Cliente ---
 function AgendamentoForm({ db }) {
     const [servico, setServico] = useState('');
     const [data, setData] = useState('');
@@ -335,51 +360,101 @@ function AgendamentoForm({ db }) {
     );
 }
 
-// --- Componente Principal da Aplicação ---
+// --- Componente Principal da Aplicação (Roteador) ---
 export default function App() {
     const [db, setDb] = useState(null);
-    const [authReady, setAuthReady] = useState(false);
-    const [error, setError] = useState(null);
-    const [view, setView] = useState('cliente');
+    const [auth, setAuth] = useState(null);
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [currentPath, setCurrentPath] = useState(window.location.pathname);
+    const [feedback, setFeedback] = useState({ message: '', type: '' });
 
+    // Inicialização do Firebase
     useEffect(() => {
-        try {
-            const app = initializeApp(firebaseConfig);
-            const authInstance = getAuth(app);
-            const dbInstance = getFirestore(app);
-            setDb(dbInstance);
-            onAuthStateChanged(authInstance, (user) => { if (user) { setAuthReady(true); } });
-            if (!authInstance.currentUser) {
-                signInAnonymously(authInstance).catch((authError) => setError("Falha ao autenticar com o sistema."));
+        const app = initializeApp(firebaseConfig);
+        const authInstance = getAuth(app);
+        const dbInstance = getFirestore(app);
+        setAuth(authInstance);
+        setDb(dbInstance);
+
+        const unsubscribe = onAuthStateChanged(authInstance, (currentUser) => {
+            setUser(currentUser);
+            setLoading(false);
+            if (currentUser && !currentUser.isAnonymous) {
+                navigate('/admin/painel');
+            } else if (!currentUser) {
+                signInAnonymously(authInstance).catch(console.error);
             }
-        } catch (e) { setError("Falha ao conectar com o sistema."); }
+        });
+        return () => unsubscribe();
     }, []);
-
-    const getButtonClass = (buttonView) => view === buttonView ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-300 hover:bg-gray-500";
-
-    const renderView = () => {
-        if (error) return <div className="text-red-400 bg-red-900 p-4 rounded-lg">{error}</div>;
-        if (!authReady || !db) return <div className="text-white text-lg">Conectando...</div>;
-
-        switch (view) {
-            case 'admin': return <AdminPanel db={db} />;
-            case 'config': return <ConfigPanel db={db} />;
-            case 'cliente':
-            default: return <AgendamentoForm db={db} />;
-        }
+    
+    // Gerenciador de Rota
+    useEffect(() => {
+        const onLocationChange = () => setCurrentPath(window.location.pathname);
+        window.addEventListener('popstate', onLocationChange);
+        return () => window.removeEventListener('popstate', onLocationChange);
+    }, []);
+    
+    // Função para navegar sem recarregar a página
+    const navigate = (path) => {
+        window.history.pushState({}, '', path);
+        setCurrentPath(path);
     };
 
-    return (
-        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-start p-4 font-sans">
-            <div className="w-full max-w-4xl mb-8 p-2 bg-gray-700 rounded-lg flex justify-center space-x-2">
-                <button onClick={() => setView('cliente')} className={`px-4 py-2 rounded-md font-semibold transition-colors ${getButtonClass('cliente')}`}>Agendar Horário</button>
-                <button onClick={() => setView('admin')} className={`px-4 py-2 rounded-md font-semibold transition-colors ${getButtonClass('admin')}`}>Painel de Controle</button>
-                <button onClick={() => setView('config')} className={`px-4 py-2 rounded-md font-semibold transition-colors ${getButtonClass('config')}`}>Configurações</button>
-            </div>
+    const showFeedback = (message, type) => {
+        setFeedback({ message, type });
+        setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
+    };
 
-            <div className="w-full flex-grow flex items-center justify-center">
-                {renderView()}
+    const handleLogout = async () => {
+        await signOut(auth);
+        navigate('/login');
+    };
+    
+    const AdminLayout = ({ children }) => (
+        <>
+            <div className="w-full max-w-4xl mb-8 p-2 bg-gray-700 rounded-lg flex justify-center items-center space-x-2">
+                <a href="/admin/painel" onClick={(e) => { e.preventDefault(); navigate('/admin/painel'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/painel') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Painel</a>
+                <a href="/admin/config" onClick={(e) => { e.preventDefault(); navigate('/admin/config'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/config') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Configurações</a>
+                <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-red-600 hover:bg-red-700 text-white">Sair</button>
             </div>
+            {children}
+        </>
+    );
+    
+    // Renderização principal
+    const renderCurrentView = () => {
+        const isAdminRoute = currentPath.startsWith('/admin');
+        const isAdmin = user && !user.isAnonymous;
+
+        if (isAdmin) {
+            if (!isAdminRoute) navigate('/admin/painel'); 
+            
+            switch(currentPath) {
+                case '/admin/painel': return <AdminLayout><AdminPanel db={db} /></AdminLayout>;
+                case '/admin/config': return <AdminLayout><ConfigPanel db={db} /></AdminLayout>;
+                default: navigate('/admin/painel'); return <AdminLayout><AdminPanel db={db} /></AdminLayout>; // Rota padrão
+            }
+        } else {
+            switch(currentPath) {
+                case '/login': return <LoginPanel auth={auth} showFeedback={showFeedback} />;
+                case '/': 
+                default:
+                    if (isAdminRoute) navigate('/'); 
+                    return <AgendamentoForm db={db} />;
+            }
+        }
+    };
+    
+    if (loading) {
+        return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white text-xl">Carregando Sistema...</div>;
+    }
+
+    return (
+        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4 font-sans">
+             <FeedbackMessage message={feedback.message} type={feedback.type} />
+             {renderCurrentView()}
         </div>
     );
 }
