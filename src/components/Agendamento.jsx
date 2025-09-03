@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, onSnapshot, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
-// --- Sua Configuração do Firebase ---
+// --- A sua Configuração do Firebase ---
 const firebaseConfig = {
     apiKey: "AIzaSyDa3jWNZTaRqrJ0ga_mjUlofD2LsXvKu1A",
     authDomain: "barbershop-2d4e8.firebaseapp.com",
@@ -19,6 +19,93 @@ const SpinnerIcon = () => (<svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-
 const FeedbackMessage = ({ message, type }) => { if (!message) return null; const baseClasses = "text-center p-3 rounded-lg my-4"; const typeClasses = type === 'success' ? "bg-green-800 text-green-200 border border-green-600" : "bg-red-800 text-red-200 border border-red-600"; return <div className={`${baseClasses} ${typeClasses}`}>{message}</div>; };
 const KebabIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" /> </svg>);
 
+// --- Componente do Painel Financeiro ---
+function FinancialPanel({ db }) {
+    const [agendamentos, setAgendamentos] = useState([]);
+    const [barbeiros, setBarbeiros] = useState([]);
+    const [loading, setLoading] = useState(true);
+    
+    const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+    const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+    const [selectedBarberId, setSelectedBarberId] = useState('todos');
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
+
+    useEffect(() => {
+        if (!db) return;
+        setLoading(true);
+
+        const qAgendamentos = query(collection(db, 'agendamentos'), where("status", "==", "Concluído"));
+        const agendamentosUnsub = onSnapshot(qAgendamentos, (querySnapshot) => {
+            const agendamentosData = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                dataObj: new Date(doc.data().data + 'T00:00:00')
+            }));
+            setAgendamentos(agendamentosData);
+        });
+
+        const barbeirosUnsub = onSnapshot(collection(db, 'barbeiros'), (querySnapshot) => {
+            setBarbeiros(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        setLoading(false);
+        return () => { agendamentosUnsub(); barbeirosUnsub(); };
+    }, [db]);
+    
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [currentMonth, currentYear, selectedBarberId]);
+
+    const agendamentosFiltrados = agendamentos.filter(ag => {
+        const matchData = ag.dataObj.getMonth() === currentMonth && ag.dataObj.getFullYear() === currentYear;
+        const matchBarbeiro = selectedBarberId === 'todos' || ag.barbeiroId === selectedBarberId;
+        return matchData && matchBarbeiro;
+    });
+
+    const faturamentoTotal = agendamentosFiltrados.reduce((acc, ag) => acc + (ag.valor || 0), 0);
+    const servicosConcluidos = agendamentosFiltrados.length;
+    const ticketMedio = servicosConcluidos > 0 ? faturamentoTotal / servicosConcluidos : 0;
+    
+    const totalPages = Math.ceil(agendamentosFiltrados.length / ITEMS_PER_PAGE);
+    const paginatedAgendamentos = agendamentosFiltrados.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    const anosDisponiveis = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+
+    return (
+        <div className="w-full max-w-6xl bg-gray-800 rounded-2xl shadow-2xl p-8 space-y-8">
+            <h1 className="text-3xl font-bold text-white text-center">Painel Financeiro</h1>
+            
+            <div className="flex flex-wrap justify-center items-center gap-4 bg-gray-700 p-3 rounded-lg">
+                <select value={currentMonth} onChange={(e) => setCurrentMonth(Number(e.target.value))} className="bg-gray-600 text-white p-2 rounded-md focus:outline-none">{meses.map((mes, index) => <option key={index} value={index}>{mes}</option>)}</select>
+                <select value={currentYear} onChange={(e) => setCurrentYear(Number(e.target.value))} className="bg-gray-600 text-white p-2 rounded-md focus:outline-none">{anosDisponiveis.map(ano => <option key={ano} value={ano}>{ano}</option>)}</select>
+                <select value={selectedBarberId} onChange={(e) => setSelectedBarberId(e.target.value)} className="bg-gray-600 text-white p-2 rounded-md focus:outline-none"><option value="todos">Todos os Barbeiros</option>{barbeiros.map(barbeiro => <option key={barbeiro.id} value={barbeiro.id}>{barbeiro.nome}</option>)}</select>
+            </div>
+
+            {loading ? <div className="flex justify-center"><SpinnerIcon/></div> : (
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-gray-700 p-6 rounded-lg text-center"><p className="text-sm text-gray-400">Faturamento Total</p><p className="text-3xl font-bold text-green-400">R$ {faturamentoTotal.toFixed(2).replace('.', ',')}</p></div>
+                        <div className="bg-gray-700 p-6 rounded-lg text-center"><p className="text-sm text-gray-400">Serviços Concluídos</p><p className="text-3xl font-bold text-white">{servicosConcluidos}</p></div>
+                        <div className="bg-gray-700 p-6 rounded-lg text-center"><p className="text-sm text-gray-400">Ticket Médio</p><p className="text-3xl font-bold text-white">R$ {ticketMedio.toFixed(2).replace('.', ',')}</p></div>
+                    </div>
+                    <div className="overflow-x-auto no-scrollbar">
+                        <h2 className="text-xl font-semibold text-white mb-4">Detalhes dos Serviços Concluídos</h2>
+                        {paginatedAgendamentos.length === 0 ? (<p className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">Nenhum serviço concluído neste período.</p>) : (
+                             <table className="min-w-full text-sm text-left text-gray-300">
+                                <thead className="bg-gray-700 text-xs uppercase"><tr><th className="px-6 py-3">Data</th><th className="px-6 py-3">Cliente</th><th className="px-6 py-3">Barbeiro</th><th className="px-6 py-3">Serviço</th><th className="px-6 py-3 text-right">Valor</th></tr></thead>
+                                <tbody>{paginatedAgendamentos.map(ag => (<tr key={ag.id} className="bg-gray-800 border-b border-gray-700 hover:bg-gray-600"><td className="px-6 py-4">{ag.dataObj.toLocaleDateString()}</td><td className="px-6 py-4 font-medium text-white">{ag.cliente.nome}</td><td className="px-6 py-4">{ag.barbeiroNome}</td><td className="px-6 py-4">{ag.servico}</td><td className="px-6 py-4 text-right font-semibold text-green-400">R$ {ag.valor.toFixed(2).replace('.', ',')}</td></tr>))}</tbody>
+                            </table>
+                        )}
+                        {totalPages > 1 && (<div className="flex justify-between items-center mt-4"><button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-4 py-2 bg-gray-600 rounded-md disabled:opacity-50">Anterior</button><span>Página {currentPage} de {totalPages}</span><button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-4 py-2 bg-gray-600 rounded-md disabled:opacity-50">Próxima</button></div>)}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
 // --- Componente do Painel de Login ---
 function LoginPanel({ auth, showFeedback }) {
     const [email, setEmail] = useState('');
@@ -32,6 +119,7 @@ function LoginPanel({ auth, showFeedback }) {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (error) {
             showFeedback('Email ou senha inválidos.', 'error');
+            console.error("Erro de login:", error);
         } finally {
             setLoading(false);
         }
@@ -41,17 +129,9 @@ function LoginPanel({ auth, showFeedback }) {
         <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-8 space-y-6">
             <h1 className="text-3xl font-bold text-white text-center">Acesso Administrativo</h1>
             <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Senha</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required />
-                </div>
-                <button type="submit" disabled={loading} className="w-full flex justify-center py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
-                    {loading ? <SpinnerIcon /> : 'Entrar'}
-                </button>
+                <div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required /></div>
+                <div><label className="block text-sm font-medium text-gray-300 mb-1">Senha</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-gray-700 text-white rounded-lg focus:outline-none" required /></div>
+                <button type="submit" disabled={loading} className="w-full flex justify-center py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">{loading ? <SpinnerIcon /> : 'Entrar'}</button>
             </form>
         </div>
     );
@@ -63,7 +143,7 @@ function ConfigPanel({ db }) {
     const [barbeiros, setBarbeiros] = useState([]);
     const [loading, setLoading] = useState(true);
     const [feedback, setFeedback] = useState({ message: '', type: '' });
-
+    
     const [novoServicoNome, setNovoServicoNome] = useState('');
     const [novoServicoPreco, setNovoServicoPreco] = useState('');
     const [novoBarbeiroNome, setNovoBarbeiroNome] = useState('');
@@ -95,11 +175,11 @@ function ConfigPanel({ db }) {
 
     const handleExcluirServico = async (id) => {
         if (window.confirm('Tem certeza?')) {
-            try { await deleteDoc(doc(db, 'servicos', id)); showFeedback('Serviço excluído!', 'success'); }
+            try { await deleteDoc(doc(db, 'servicos', id)); showFeedback('Serviço excluído!', 'success'); } 
             catch (error) { showFeedback('Erro ao excluir serviço.', 'error'); }
         }
     };
-
+    
     const handleAdicionarBarbeiro = async (e) => {
         e.preventDefault();
         if (!novoBarbeiroNome) { showFeedback('Insira o nome do barbeiro.', 'error'); return; }
@@ -112,7 +192,7 @@ function ConfigPanel({ db }) {
 
     const handleExcluirBarbeiro = async (id) => {
         if (window.confirm('Tem certeza?')) {
-            try { await deleteDoc(doc(db, 'barbeiros', id)); showFeedback('Barbeiro excluído!', 'success'); }
+            try { await deleteDoc(doc(db, 'barbeiros', id)); showFeedback('Barbeiro excluído!', 'success'); } 
             catch (error) { showFeedback('Erro ao excluir barbeiro.', 'error'); }
         }
     };
@@ -125,8 +205,8 @@ function ConfigPanel({ db }) {
                 <div>
                     <h2 className="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Gerenciar Serviços</h2>
                     <form onSubmit={handleAdicionarServico} className="bg-gray-700 p-4 rounded-lg flex flex-col gap-4 mb-6">
-                        <input type="text" value={novoServicoNome} onChange={(e) => setNovoServicoNome(e.target.value)} placeholder="Nome do Serviço" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none" />
-                        <input type="number" value={novoServicoPreco} onChange={(e) => setNovoServicoPreco(e.target.value)} placeholder="Preço" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none" />
+                        <input type="text" value={novoServicoNome} onChange={(e) => setNovoServicoNome(e.target.value)} placeholder="Nome do Serviço" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none"/>
+                        <input type="number" value={novoServicoPreco} onChange={(e) => setNovoServicoPreco(e.target.value)} placeholder="Preço" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none"/>
                         <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">Adicionar Serviço</button>
                     </form>
                     <div className="space-y-3 h-48 overflow-y-auto no-scrollbar">{loading ? <p>Carregando...</p> : servicos.map(s => (<div key={s.id} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center"><div><p className="font-semibold text-white">{s.nome}</p><p className="text-sm text-gray-300">R$ {s.preco.toFixed(2)}</p></div><button onClick={() => handleExcluirServico(s.id)} className="text-red-400 hover:text-red-300">Excluir</button></div>))}</div>
@@ -134,7 +214,7 @@ function ConfigPanel({ db }) {
                 <div>
                     <h2 className="text-xl font-semibold text-white mb-4 border-b border-gray-700 pb-2">Gerenciar Barbeiros</h2>
                     <form onSubmit={handleAdicionarBarbeiro} className="bg-gray-700 p-4 rounded-lg flex flex-col gap-4 mb-6">
-                        <input type="text" value={novoBarbeiroNome} onChange={(e) => setNovoBarbeiroNome(e.target.value)} placeholder="Nome do Barbeiro" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none" />
+                        <input type="text" value={novoBarbeiroNome} onChange={(e) => setNovoBarbeiroNome(e.target.value)} placeholder="Nome do Barbeiro" className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg focus:outline-none"/>
                         <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">Adicionar Barbeiro</button>
                     </form>
                     <div className="space-y-3 h-48 overflow-y-auto no-scrollbar">{loading ? <p>Carregando...</p> : barbeiros.map(b => (<div key={b.id} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center"><p className="font-semibold text-white">{b.nome}</p><button onClick={() => handleExcluirBarbeiro(b.id)} className="text-red-400 hover:text-red-300">Excluir</button></div>))}</div>
@@ -151,13 +231,15 @@ function AdminPanel({ db }) {
     const [openMenuId, setOpenMenuId] = useState(null);
     const [feedback, setFeedback] = useState({ message: '', type: '' });
     const menuRef = useRef(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
 
     useEffect(() => {
         if (!db) return;
         const agendamentosCollectionRef = collection(db, 'agendamentos');
         const unsubscribe = onSnapshot(agendamentosCollectionRef, (querySnapshot) => {
             const agendamentosData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            agendamentosData.sort((a, b) => new Date(`${a.data}T${a.horario}`) - new Date(`${b.data}T${b.horario}`));
+            agendamentosData.sort((a, b) => new Date(`${b.data}T${b.horario}`) - new Date(`${a.data}T${a.horario}`)); // Ordem decrescente
             setAgendamentos(agendamentosData);
             setLoading(false);
         });
@@ -183,9 +265,7 @@ function AdminPanel({ db }) {
         try {
             await updateDoc(doc(db, 'agendamentos', id), { status });
             showFeedback(`Agendamento marcado como ${status}!`, 'success');
-        } catch (error) {
-            showFeedback('Erro ao atualizar status.', 'error');
-        }
+        } catch (error) { showFeedback('Erro ao atualizar status.', 'error'); }
     };
 
     const handleDelete = async (id) => {
@@ -193,11 +273,12 @@ function AdminPanel({ db }) {
             try {
                 await deleteDoc(doc(db, 'agendamentos', id));
                 showFeedback('Agendamento excluído com sucesso!', 'success');
-            } catch (error) {
-                showFeedback('Erro ao excluir agendamento.', 'error');
-            }
+            } catch (error) { showFeedback('Erro ao excluir agendamento.', 'error');}
         }
     };
+    
+    const totalPages = Math.ceil(agendamentos.length / ITEMS_PER_PAGE);
+    const paginatedAgendamentos = agendamentos.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     const getStatusClass = (status) => {
         switch (status) {
@@ -213,23 +294,12 @@ function AdminPanel({ db }) {
             <FeedbackMessage message={feedback.message} type={feedback.type} />
             <div className="overflow-x-auto no-scrollbar">
                 {loading ? (<p className="text-center text-gray-300">Carregando...</p>
-                ) : agendamentos.length === 0 ? (<p className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">Nenhum agendamento encontrado.</p>
+                ) : paginatedAgendamentos.length === 0 ? (<p className="text-center text-gray-400 bg-gray-700 p-4 rounded-lg">Nenhum agendamento encontrado.</p>
                 ) : (
                     <table className="min-w-full text-sm text-left text-gray-300">
-                        <thead className="bg-gray-700 text-xs uppercase">
-                            <tr>
-                                <th className="px-6 py-3">Data</th>
-                                <th className="px-6 py-3">Hora</th>
-                                <th className="px-6 py-3">Cliente</th>
-                                <th className="px-6 py-3">Barbeiro</th>
-                                <th className="px-6 py-3">Serviço</th>
-                                <th className="px-6 py-3">Contato</th>
-                                <th className="px-6 py-3 text-center">Status</th>
-                                <th className="px-6 py-3 text-center">Ações</th>
-                            </tr>
-                        </thead>
+                        <thead className="bg-gray-700 text-xs uppercase"><tr><th className="px-6 py-3">Data</th><th className="px-6 py-3">Hora</th><th className="px-6 py-3">Cliente</th><th className="px-6 py-3">Barbeiro</th><th className="px-6 py-3">Serviço</th><th className="px-6 py-3">Contato</th><th className="px-6 py-3 text-center">Status</th><th className="px-6 py-3 text-center">Ações</th></tr></thead>
                         <tbody>
-                            {agendamentos.map(ag => (
+                            {paginatedAgendamentos.map(ag => (
                                 <tr key={ag.id} className="bg-gray-800 border-b border-gray-700 hover:bg-gray-600">
                                     <td className="px-6 py-4">{new Date(ag.data + 'T00:00:00').toLocaleDateString()}</td>
                                     <td className="px-6 py-4">{ag.horario}</td>
@@ -240,30 +310,8 @@ function AdminPanel({ db }) {
                                     <td className="px-6 py-4 text-center"><span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getStatusClass(ag.status)}`}>{ag.status}</span></td>
                                     <td className="px-6 py-4 text-center">
                                         <div className="relative inline-block text-left action-menu-container">
-                                            <button
-                                                onClick={() => {
-                                                    const novoId = openMenuId === ag.id ? null : ag.id;
-                                                    setOpenMenuId(novoId);
-                                                    if (novoId) {
-                                                        setTimeout(() => {
-                                                            const menu = document.getElementById(`menu-${ag.id}`);
-                                                            if (menu) {
-                                                                menu.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                                                            }
-                                                        }, 50);
-                                                    }
-                                                }}
-                                                className="p-2 rounded-full hover:bg-gray-700"
-                                            >
-                                                <KebabIcon />
-                                            </button>
-                                            {openMenuId === ag.id && (
-                                                <div id={`menu-${ag.id}`} ref={menuRef} className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-700 ring-1 ring-black ring-opacity-5 z-10">
-                                                    <a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Concluído'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-green-400 hover:bg-gray-600">Concluir</a>
-                                                    <a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Cancelado'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600">Cancelar</a>
-                                                    <a href="#" onClick={(e) => { e.preventDefault(); handleDelete(ag.id); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">Excluir</a>
-                                                </div>
-                                            )}
+                                            <button onClick={() => { const novoId = openMenuId === ag.id ? null : ag.id; setOpenMenuId(novoId); if (novoId) { setTimeout(() => { const menu = document.getElementById(`menu-${ag.id}`); if (menu) { menu.scrollIntoView({ behavior: "smooth", block: "nearest" }); } }, 50); } }} className="p-2 rounded-full hover:bg-gray-700"><KebabIcon /></button>
+                                            {openMenuId === ag.id && (<div id={`menu-${ag.id}`} ref={menuRef} className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-gray-700 ring-1 ring-black ring-opacity-5 z-10"><a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Concluído'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-green-400 hover:bg-gray-600">Concluir</a><a href="#" onClick={(e) => { e.preventDefault(); handleUpdateStatus(ag.id, 'Cancelado'); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600">Cancelar</a><a href="#" onClick={(e) => { e.preventDefault(); handleDelete(ag.id); setOpenMenuId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">Excluir</a></div>)}
                                         </div>
                                     </td>
                                 </tr>
@@ -271,12 +319,13 @@ function AdminPanel({ db }) {
                         </tbody>
                     </table>
                 )}
+                {totalPages > 1 && (<div className="flex justify-between items-center mt-4"><button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-4 py-2 bg-gray-600 rounded-md disabled:opacity-50">Anterior</button><span>Página {currentPage} de {totalPages}</span><button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-4 py-2 bg-gray-600 rounded-md disabled:opacity-50">Próxima</button></div>)}
             </div>
         </div>
     );
 }
 
-// --- Componente da Página do Cliente ---
+// --- Componente do Formulário de Agendamento ---
 function AgendamentoForm({ db }) {
     const [servico, setServico] = useState('');
     const [data, setData] = useState('');
@@ -369,7 +418,7 @@ export default function App() {
     const [currentPath, setCurrentPath] = useState(window.location.pathname);
     const [feedback, setFeedback] = useState({ message: '', type: '' });
 
-    // Inicialização do Firebase
+    // Inicialização e Roteamento
     useEffect(() => {
         const app = initializeApp(firebaseConfig);
         const authInstance = getAuth(app);
@@ -381,22 +430,23 @@ export default function App() {
             setUser(currentUser);
             setLoading(false);
             if (currentUser && !currentUser.isAnonymous) {
-                navigate('/admin/painel');
+                if (window.location.pathname === '/login' || window.location.pathname === '/') {
+                    navigate('/admin/painel');
+                }
             } else if (!currentUser) {
                 signInAnonymously(authInstance).catch(console.error);
             }
         });
-        return () => unsubscribe();
-    }, []);
-    
-    // Gerenciador de Rota
-    useEffect(() => {
+
         const onLocationChange = () => setCurrentPath(window.location.pathname);
         window.addEventListener('popstate', onLocationChange);
-        return () => window.removeEventListener('popstate', onLocationChange);
+
+        return () => { 
+            unsubscribe();
+            window.removeEventListener('popstate', onLocationChange);
+        };
     }, []);
-    
-    // Função para navegar sem recarregar a página
+
     const navigate = (path) => {
         window.history.pushState({}, '', path);
         setCurrentPath(path);
@@ -412,10 +462,12 @@ export default function App() {
         navigate('/login');
     };
     
+    // Layout do Painel Administrativo
     const AdminLayout = ({ children }) => (
         <>
-            <div className="w-full max-w-4xl mb-8 p-2 bg-gray-700 rounded-lg flex justify-center items-center space-x-2">
+            <div className="w-full max-w-5xl mb-8 p-2 bg-gray-700 rounded-lg flex justify-center items-center space-x-2">
                 <a href="/admin/painel" onClick={(e) => { e.preventDefault(); navigate('/admin/painel'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/painel') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Painel</a>
+                <a href="/admin/financeiro" onClick={(e) => { e.preventDefault(); navigate('/admin/financeiro'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/financeiro') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Financeiro</a>
                 <a href="/admin/config" onClick={(e) => { e.preventDefault(); navigate('/admin/config'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/config') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Configurações</a>
                 <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-red-600 hover:bg-red-700 text-white">Sair</button>
             </div>
@@ -425,31 +477,24 @@ export default function App() {
     
     // Renderização principal
     const renderCurrentView = () => {
-        const isAdminRoute = currentPath.startsWith('/admin');
         const isAdmin = user && !user.isAnonymous;
 
         if (isAdmin) {
-            if (!isAdminRoute) navigate('/admin/painel'); 
-            
             switch(currentPath) {
                 case '/admin/painel': return <AdminLayout><AdminPanel db={db} /></AdminLayout>;
                 case '/admin/config': return <AdminLayout><ConfigPanel db={db} /></AdminLayout>;
-                default: navigate('/admin/painel'); return <AdminLayout><AdminPanel db={db} /></AdminLayout>; // Rota padrão
+                case '/admin/financeiro': return <AdminLayout><FinancialPanel db={db} /></AdminLayout>;
+                default: navigate('/admin/painel'); return null; 
             }
         } else {
             switch(currentPath) {
                 case '/login': return <LoginPanel auth={auth} showFeedback={showFeedback} />;
-                case '/': 
-                default:
-                    if (isAdminRoute) navigate('/'); 
-                    return <AgendamentoForm db={db} />;
+                default: return <AgendamentoForm db={db} />;
             }
         }
     };
     
-    if (loading) {
-        return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white text-xl">Carregando Sistema...</div>;
-    }
+    if (loading) return <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white text-xl">A Carregar Sistema...</div>;
 
     return (
         <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4 font-sans">
