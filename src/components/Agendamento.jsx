@@ -662,15 +662,21 @@ export default function App() {
     };
 
     const AdminLayout = ({ children }) => (
-        <>
-            <div className="w-full max-w-5xl mb-8 p-2 bg-gray-700 rounded-lg flex justify-center items-center space-x-2">
-                <a href="/admin/painel" onClick={(e) => { e.preventDefault(); navigate('/admin/painel'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/painel') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Painel</a>
-                <a href="/admin/financeiro" onClick={(e) => { e.preventDefault(); navigate('/admin/financeiro'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/financeiro') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Financeiro</a>
-                <a href="/admin/config" onClick={(e) => { e.preventDefault(); navigate('/admin/config'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/config') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Configurações</a>
-                <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-red-600 hover:bg-red-700 text-white">Sair</button>
-            </div>
-            {children}
-        </>
+    <>
+        {/* ... sua barra de navegação fixa ... */}
+        <div className="fixed top-0 left-0 w-full z-50 bg-gray-700 p-3 shadow-lg flex justify-center items-center space-x-2">
+            {/* ... botões ... */}
+            <a href="/admin/painel" onClick={(e) => { e.preventDefault(); navigate('/admin/painel'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/painel') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Painel</a>
+            <a href="/admin/financeiro" onClick={(e) => { e.preventDefault(); navigate('/admin/financeiro'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/financeiro') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Financeiro</a>
+            <a href="/admin/config" onClick={(e) => { e.preventDefault(); navigate('/admin/config'); }} className={`px-4 py-2 rounded-md font-semibold ${currentPath.includes('/admin/config') ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>Configurações</a>
+            <button onClick={handleLogout} className="px-4 py-2 rounded-md font-semibold bg-red-600 hover:bg-red-700 text-white">Sair</button>
+        </div>
+
+        {/* Container do conteúdo principal -- AGORA CENTRALIZADO */}
+        <div className="pt-24 w-full flex flex-col items-center px-4">
+             {children}
+        </div>
+    </>
     );
 
     const renderCurrentView = () => {
